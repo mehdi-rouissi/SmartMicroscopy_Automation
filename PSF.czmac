@@ -1,0 +1,560 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Script>
+  <Context>Zen26</Context>
+  <Version>1.0</Version>
+  <Language>Python</Language>
+  <Text>Zen.Acquisition.StopContinuous(WF3)
+###Clear Message and Documents
+Zen.Application.Documents.RemoveAll(False)
+Zen.Application.MacroEditor.ClearMessages()
+Zen.Application.Documents.RemoveAll(False)
+
+###Configuration Objectif et optovar
+if Zen.Devices.ObjectiveChanger.ActualPosition != 3 :
+  Zen.Devices.ObjectiveChanger.TargetPosition = 3
+  Zen.Devices.ObjectiveChanger.Apply()
+if Zen.Devices.Optovar.ActualPosition != 1 :
+  Zen.Devices.Optovar.TargetPosition = 1
+  Zen.Devices.Optovar.Apply()
+
+###Load WF Experiment
+WF1 = ZenExperiment()
+WF1.Load('WF2_Billes_psf.czexp')
+import math
+
+###Live Autoexposure et AF
+Zen.Acquisition.StartLive(WF1)
+Zen.Acquisition.FindSurface()
+Zen.Acquisition.FindAutofocus(WF1, 500)
+Zen.Acquisition.StopLive(WF1)
+Zen.Acquisition.StartLive(WF1)
+Zen.Application.Pause("Le focus est bon ?")
+Zen.Acquisition.StopLive(WF1)
+
+###Acquisition d'image et Calcul du seuil de Saturation
+Image = Zen.Acquisition.AcquireImage(WF1) 
+Bit = Image.Metadata.Format
+BitDepth = int(Bit.Replace("Bit", ""))
+saturation = 2**BitDepth - 2
+
+###Load Analysis setting
+ias = ZenImageAnalysisSetting()
+ias.Load("WF_Billes_psf_isol")
+dp = 0
+
+###Set intensity
+HWS = ZenHardwareSetting()
+Exposure_intensity = int(Image.Metadata.LightSourceIntensity.Remove(2))
+HWS.SetParameter('MTBLED2_1', 'Intensity', Exposure_intensity)
+
+###Boucle de controle 
+while dp &lt; 5 :
+###Acquisition et Analyse d'image
+  Zen.Acquisition.StartLive(WF1)
+  Zen.Devices.ApplyHardwareSetting(HWS)
+  Image = Zen.Acquisition.AcquireImage(WF1)
+  Zen.Analyzing.Analyze(Image, ias)
+  tables = Zen.Analyzing.AnalyzeToTable(Image, ias)
+  table = tables[0]
+  #Zen.Application.Documents.Add(table)
+  Zen.Acquisition.StopLive(WF1)
+  
+  billes_valides = []
+  billes_all = []
+  
+  for i in range(table.RowCount):
+    x = table.GetValue(i, 2)
+    y = table.GetValue(i, 3)
+    I = table.GetValue(i, 4)
+    d = table.GetValue(i, 5)
+    c = table.GetValue(i, 6)
+    
+    billes_all.append((I, x, y, d, c))
+    
+###Controle du diamtre et de la circularite des billes
+  for i, (I1, x1, y1, d1, c1) in enumerate(billes_all):
+    if not (0.3 &lt;= d1 &lt;= 0.8):
+      continue
+    if not (0.7 &lt;= c1 &lt;= 1.0):
+      continue
+      
+###Controle de l'isolement des billes validees
+    isolated = True
+    for j, (_, x2, y2, _, _) in enumerate(billes_all):
+      if i != j :
+        dist = math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+        if dist &lt; 8:
+          isolated = False
+          break
+    if isolated : 
+      billes_valides.append((I1, x1, y1, d1, c1))
+  if not billes_valides:
+    print("Aucune bille isole trouvee")
+    
+###Classer les billes par ordre croissant d'intensite
+  billes_valides.sort(reverse=True, key=lambda b: b[0])
+  I_max, X_Imax, Y_Imax, D_Imax, C_Imax = billes_valides[0]
+  
+###Calcul de la distance de deplacement en cas de saturation
+  PosActuelX = Zen.Devices.Stage.ActualPositionX
+  PosActuelY = Zen.Devices.Stage.ActualPositionY
+  PosNextX = Zen.Devices.Stage.ActualPositionX +  X_Imax + Y_Imax 
+  
+###Verifiction de saturation
+  if I_max &gt; saturation:
+    print("Bille Saturee Deplacement")
+    Zen.Devices.Stage.MoveTo(PosNextX, PosActuelY)
+    dp +=1
+    continue
+    
+###Verification de la dynamique 
+  while I_max &lt; 2000:
+    Exposure_intensity += 1
+    print("Intensite = {}%".format(HWS.GetParameter('MTBLED2_1' , 'Intensity')))
+    HWS.SetParameter('MTBLED2_1', 'Intensity', Exposure_intensity)
+    Zen.Devices.ApplyHardwareSetting(HWS)
+    Image = Zen.Acquisition.AcquireImage(WF1)
+    Zen.Analyzing.Analyze(Image, ias)
+    tables = Zen.Analyzing.AnalyzeToTable(Image, ias)
+    table = tables[0]
+    
+    found = False
+    for i in range(table.RowCount):
+      x = table.GetValue(i, 2)
+      y = table.GetValue(i, 3)
+      I = table.GetValue(i, 4)
+      if abs(x - X_Imax) &lt; 1e-3 and abs(y - Y_Imax) &lt; 1e-3:
+        I_max = I
+        found = True
+        break 
+        
+    if not found :
+      continue
+      
+  break
+  
+if dp == 5 :
+  print("Vous avez atteint le max deplacement")
+
+###Centrer la bille 
+Zen.Devices.Stage.MoveTo(X_Imax, Y_Imax)
+#test_wf = Zen.Acquisition.AcquireImage(WF1)
+#Zen.Application.Documents.Add(test_wf)
+
+###Load EXperience LSM et Analysis setting
+WF3 = ZenExperiment()
+WF3.Load('LSM2_Zstack_Billes_psf.czexp')
+ias2 = ZenImageAnalysisSetting()
+ias2.Load("LSM_Billes_psf")
+
+###Centrer la bille en LSM
+bille_au_centre = Zen.Acquisition.AcquireImage(WF3)
+Zen.Analyzing.Analyze(bille_au_centre, ias2)
+tables1 = Zen.Analyzing.AnalyzeToTable(bille_au_centre, ias2)
+table1 = tables1[0]
+bi = -1
+cbx = -1
+cby = -1
+for i in range(table1.RowCount):
+ BI = table1.GetValue(i,1)
+ CentreBX = table1.GetValue(i,2)
+ CentreBY = table1.GetValue(i,3)
+ if BI &gt; bi :
+  bi = BI
+  cbx = CentreBX
+  cby = CentreBY
+if bi==-1:
+  Zen.Application.Pause("Stop Macro")
+Zen.Devices.Stage.MoveTo(cbx, cby)
+#test_lsm1 = Zen.Acquisition.AcquireImage(WF3)
+#Zen.Application.Documents.Add(test_lsm1)
+
+bille_au_centre2 = Zen.Acquisition.AcquireImage(WF3)
+Zen.Analyzing.Analyze(bille_au_centre2, ias2)
+tables11 = Zen.Analyzing.AnalyzeToTable(bille_au_centre2, ias2)
+table11 = tables11[0]
+bi = -1
+cbx = -1
+cby = -1
+for i in range(table11.RowCount):
+ BI = table11.GetValue(i,1)
+ CentreBX = table11.GetValue(i,2)
+ CentreBY = table11.GetValue(i,3)
+ if BI &gt; bi :
+  bi = BI
+  cbx = CentreBX
+  cby = CentreBY
+if bi==-1:
+  Zen.Application.Pause("Stop Macro")
+Zen.Devices.Stage.MoveTo(cbx, cby)
+#test_lsm2 = Zen.Acquisition.AcquireImage(WF3)
+#Zen.Application.Documents.Add(test_lsm2)
+
+###Load Experiment
+WF2 = ZenExperiment()
+WF2.Load('LSM2_Billes_psf.czexp')
+
+###Calcul de la Saturation
+imageS = Zen.Acquisition.AcquireImage(WF2)
+Bit2 = imageS.Metadata.Format
+BitDepth2 = int(Bit2.Replace("Bit", ""))
+saturation2 = 2**BitDepth2 - 2
+
+###Verification de saturation
+image4 = Zen.Acquisition.AcquireImage(WF2)
+Zen.Analyzing.Analyze(image4, ias2)
+tables2 = Zen.Analyzing.AnalyzeToTable(image4, ias2)
+table2 = tables2[0]
+x_test = 1 
+while x_test &gt; 0 :
+ P_max= -1
+ for i in range(table2.RowCount) : 
+  p = table2.GetValue(i,5)
+  if p &gt; P_max : 
+    P_max = p
+ if P_max &gt; saturation2 :
+  Zen.Acquisition.StartContinuous(WF2)
+  Zen.Application.Pause("Modifiez le gain !")
+  Zen.Acquisition.StopContinuous(WF2)
+  image3 = Zen.Acquisition.AcquireImage(WF2)
+  Zen.Analyzing.Analyze(image3, ias2)
+  tables2 = Zen.Analyzing.AnalyzeToTable(image3, ias2)
+  table2 = tables2[0]
+  Gain = image3.Metadata.DetectorGain
+ else :
+  #print("La bille n'est plus saturee")
+  break
+
+###Acquisition du Zstack
+path = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Input"
+zstack = Zen.Acquisition.Execute(WF2)
+zstack.Save(path+"\\Zstack.czi")
+
+
+
+
+"""
+###CODE POUR FIT 1D
+###Extract profil X&amp;Y&amp;Z
+gval = zstack.CopyPixelsToArray(ZenPixelType.Gray8)
+X = int(zstack.Metadata.Width)
+Y = int(zstack.Metadata.Height)
+Z = int(zstack.Metadata.ZStackCount)
+
+###Trouver le pixel_max
+pmax =-1
+px = -1
+py = -1
+pz = -1
+
+for z in range(Z):
+  sub = zstack.CreateSubImage("Z({})".format(z+1))
+  vall = sub.CopyPixelsToArray(ZenPixelType.Gray8)
+  for y in range(Y):
+    for x in range(X):
+      index = y*X + x
+      if vall[index] &gt; pmax:
+        pmax = vall[index]
+        px = x
+        py = y 
+        pz = z+1
+
+###Choix du Slice avec le pixel max
+slice = zstack.CreateSubImage("Z({})".format(pz))
+pixels = slice.CopyPixelsToArray(ZenPixelType.Gray8)
+
+###Profil X
+pixel_x =[]
+tableauX = ZenTable("Profile X")
+tableauX.Columns.Add("Distance [px]")
+tableauX.Columns.Add("Intensity")
+
+for x in range(X):
+  index = py*X + x
+  pixel_x.append(pixels[index])
+
+profileX = zstack.Graphics.Add(ZenGraphicCategory.Line)
+profileX.SetBounds(0,py,512,0)
+
+for e, i in enumerate(pixel_x) :
+  row = tableauX.Rows.Add()
+  row["Distance [px]"] = e
+  row["Intensity"] = i
+  
+#Zen.Application.Documents.Add(tableauX)
+tableauX.Save(path+"\\profil_X")
+
+###Profil Y
+pixel_y =[]
+tableauY = ZenTable("Profile Y")
+tableauY.Columns.Add("Distance [px]")
+tableauY.Columns.Add("Intensity")
+
+for y in range(Y):
+  index = y*X + px
+  pixel_y.append(pixels[index])
+  
+profileY = zstack.Graphics.Add(ZenGraphicCategory.Line)
+profileY.SetBounds(px,0,0,Y)
+
+for e, i in enumerate(pixel_y) :
+  row = tableauY.Rows.Add()
+  row["Distance [px]"] = e
+  row["Intensity"] = i
+  
+#Zen.Application.Documents.Add(tableauY)
+tableauY.Save(path+"\\profil_Y")
+
+###Profil Z
+pixel_z = []
+tableauZ = ZenTable("profil_Z")
+tableauZ.Columns.Add("Thickness")
+tableauZ.Columns.Add("Intensity")
+
+for z in range(Z):
+  im = zstack.CreateSubImage("Z({})".format(z+1))
+  val = im.CopyPixelsToArray(ZenPixelType.Gray8)
+  index = py*X + px
+  pixel_z.append(val[index])
+
+for e, i in enumerate(pixel_z) :
+  row = tableauZ.Rows.Add()
+  row["Thickness"] = e
+  row["Intensity"] = i
+
+#Zen.Application.Documents.Add(tableauZ)
+tableauZ.Save(path+"\\profil_Z")
+
+###Fit 
+###import 
+from System.Diagnostics import Process
+from System.IO import File, Path, Directory
+
+###Preparation des arguments
+python_exe = r"D:\Python\python.exe"
+script_fit = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Script\fit1D_psf_profiles.py"
+zstack_path = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Input\Zstack.czi"
+profil_folder = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Input\\"
+output_folder = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Output\\"
+
+arguments = '"' + script_fit + '" "' + zstack_path + '" "' + profil_folder + '" "' + output_folder + '"'
+
+###Lancer le programme Python 
+app = Process()
+app.StartInfo.UseShellExecute = False
+app.StartInfo.RedirectStandardOutput = True
+app.StartInfo.RedirectStandardError = True
+app.StartInfo.FileName = python_exe
+app.StartInfo.Arguments = arguments
+app.Start()
+app.WaitForExit()
+output = app.StandardOutput.ReadToEnd()
+error = app.StandardError.ReadToEnd()
+print(output)
+print(error)
+"""
+
+
+
+
+
+
+
+"""
+###CODE POUR FIT 1D MOYEN
+### Extract profil X, Y, Z
+gval = zstack.CopyPixelsToArray(ZenPixelType.Gray8)
+X = int(zstack.Metadata.Width)
+Y = int(zstack.Metadata.Height)
+Z = int(zstack.Metadata.ZStackCount)
+
+### Trouver le pixel max
+pmax = -1
+px = py = pz = -1
+
+for z in range(Z):
+    sub = zstack.CreateSubImage("Z({})".format(z + 1))
+    vall = sub.CopyPixelsToArray(ZenPixelType.Gray8)
+    for y in range(Y):
+        for x in range(X):
+            index = y * X + x
+            if vall[index] &gt; pmax:
+                pmax = vall[index]
+                px = x
+                py = y
+                pz = z + 1
+
+### Choix du Slice avec le pixel max
+slice = zstack.CreateSubImage("Z({})".format(pz))
+pixels = slice.CopyPixelsToArray(ZenPixelType.Gray8)
+
+### Profils X sur 3 lignes : py-1, py, py+1 (en gérant les bords)
+lines_y = []
+if py &gt; 0:
+    lines_y.append(py - 1)
+lines_y.append(py)
+if py &gt; Y - 1:
+    lines_y.append(py + 1)
+
+# Initialiser tableau pour stocker les moyennes
+profile_mean = [0] * X
+
+# Extraire les 3 profils
+for y_line in lines_y:
+    for x in range(X):
+        index = y_line * X + x
+        profile_mean[x] += pixels[index]
+
+# Moyenne sur le nombre de lignes
+profile_mean = [val / len(lines_y) for val in profile_mean]
+
+### Affichage du profil X
+tableauX = ZenTable("Profil X Moyenné")
+tableauX.Columns.Add("Distance [px]")
+tableauX.Columns.Add("Intensity")
+
+for e, i in enumerate(profile_mean):
+    row = tableauX.Rows.Add()
+    row["Distance [px]"] = e
+    row["Intensity"] = i
+
+# Affichage sur l'image
+profileX = zstack.Graphics.Add(ZenGraphicCategory.Line)
+profileX.SetBounds(0, py, X, 0)
+
+#Zen.Application.Documents.Add(tableauX)
+# Sauvegarde du tableau
+tableauX.Save(path + "\\profil_X_moyen")
+
+
+### profil y moyenné
+### Profils Y sur 3 colonnes : px-1, px, px+1 (en gérant les bords)
+cols_x = []
+if px &gt; 0:
+    cols_x.append(px - 1)
+cols_x.append(px)
+if px &gt; X - 1:
+    cols_x.append(px + 1)
+
+# Initialiser tableau pour stocker les moyennes
+profile_y_mean = [0] * Y
+
+# Extraire les 3 profils
+for x_col in cols_x:
+    for y in range(Y):
+        index = y * X + x_col
+        profile_y_mean[y] += pixels[index]
+
+# Moyenne sur le nombre de colonnes
+profile_y_mean = [val / len(cols_x) for val in profile_y_mean]
+
+### Affichage du profil Y
+tableauY = ZenTable("Profil Y Moyenné")
+tableauY.Columns.Add("Distance [px]")
+tableauY.Columns.Add("Intensity")
+
+for e, i in enumerate(profile_y_mean):
+    row = tableauY.Rows.Add()
+    row["Distance [px]"] = e
+    row["Intensity"] = i
+
+# Affichage sur l'image (facultatif)
+profileY = zstack.Graphics.Add(ZenGraphicCategory.Line)
+profileY.SetBounds(px, 0, 0, Y)
+
+#Zen.Application.Documents.Add(tableauY)
+# Sauvegarde du tableau
+tableauY.Save(path + "\\profil_Y_moyen")
+
+
+###Profil Z
+pixel_z = []
+tableauZ = ZenTable("profil_Z")
+tableauZ.Columns.Add("Thickness")
+tableauZ.Columns.Add("Intensity")
+
+for z in range(Z):
+  im = zstack.CreateSubImage("Z({})".format(z+1))
+  val = im.CopyPixelsToArray(ZenPixelType.Gray8)
+  index = py*X + px
+  pixel_z.append(val[index])
+
+for e, i in enumerate(pixel_z) :
+  row = tableauZ.Rows.Add()
+  row["Thickness"] = e
+  row["Intensity"] = i
+
+#Zen.Application.Documents.Add(tableauZ)
+tableauZ.Save(path+"\\profil_Z_moyen")
+
+###Fit 
+###import 
+from System.Diagnostics import Process
+from System.IO import File, Path, Directory
+
+###Preparation des arguments
+python_exe = r"D:\Python\python.exe"
+script_fit = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Script\fit1D_moyen_psf_profiles.py"
+zstack_path = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Input\Zstack.czi"
+profil_folder = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Input\\"
+output_folder = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Output\\"
+
+arguments = '"' + script_fit + '" "' + zstack_path + '" "' + profil_folder + '" "' + output_folder + '"'
+
+###Lancer le programme Python 
+app = Process()
+app.StartInfo.UseShellExecute = False
+app.StartInfo.RedirectStandardOutput = True
+app.StartInfo.RedirectStandardError = True
+app.StartInfo.FileName = python_exe
+app.StartInfo.Arguments = arguments
+app.Start()
+app.WaitForExit()
+output = app.StandardOutput.ReadToEnd()
+error = app.StandardError.ReadToEnd()
+print(output)
+print(error)
+"""
+
+
+
+
+
+
+
+
+"""
+###CODE POUR FIT 3D
+###import 
+from System.Diagnostics import Process
+from System.IO import File, Path, Directory
+
+###Preparation des arguments
+python_exe = r"D:\Python\python.exe"
+script_fit = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Script\fit3D_psf.py"
+zstack_path = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Input\Zstack.czi"
+output_folder = r"D:\DATA USERS\eqpimagerie\mehdi\FWMH_Fit_PSF\Output\\"
+
+arguments = '"' + script_fit + '" "' + zstack_path + '" "' + output_folder + '"'
+
+###Lancer le programme Python 
+app = Process()
+app.StartInfo.UseShellExecute = False
+app.StartInfo.RedirectStandardOutput = True
+app.StartInfo.RedirectStandardError = True
+app.StartInfo.FileName = python_exe
+app.StartInfo.Arguments = arguments
+app.Start()
+app.WaitForExit()
+output = app.StandardOutput.ReadToEnd()
+error = app.StandardError.ReadToEnd()
+print(output)
+print(error)
+"""
+</Text>
+  <Author></Author>
+  <Description></Description>
+  <Keywords></Keywords>
+  <Row>186</Row>
+  <Column>2</Column>
+</Script>
