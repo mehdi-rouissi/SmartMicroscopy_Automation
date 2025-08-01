@@ -1,0 +1,139 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Script>
+  <Context>Zen26</Context>
+  <Version>1.0</Version>
+  <Language>Python</Language>
+  <Text>Zen.Application.Documents.RemoveAll(False)
+Zen.Application.MacroEditor.ClearMessages()
+
+import clr
+import os 
+from System import DateTime, TimeSpan
+from datetime import datetime, timedelta
+
+#Configuration Objectif et optovar
+if Zen.Devices.ObjectiveChanger.ActualPosition != 2 :
+  Zen.Devices.ObjectiveChanger.TargetPosition = 2
+  Zen.Devices.ObjectiveChanger.Apply()
+if Zen.Devices.Optovar.ActualPosition != 3 :
+  Zen.Devices.Optovar.TargetPosition = 3
+  Zen.Devices.Optovar.Apply()
+
+
+
+###Lancer Experiences
+Green = ZenExperiment()
+Red = ZenExperiment()
+BF = ZenExperiment()
+BFGR = ZenExperiment()
+BF.Load('Gastrl_BF_test.czexp')
+local = ZenImageAnalysisSetting()
+local.Load("Detect_Gatsr")
+
+Zen.Acquisition.StartLive(BF)
+Zen.Acquisition.AutoExposure(BF)
+Zen.Acquisition.FindSurface()
+Zen.Acquisition.FindAutofocus(BF, 300)
+Zen.Acquisition.AutoExposure(BF)
+Zen.Acquisition.StopLive(BF)
+
+#Zen.Acquisition.StartLive(BF)
+#Zen.Application.Pause("Le focus est bon ?")
+#Zen.Acquisition.StopLive(BF)
+
+scan = ZenExperiment()
+scan.Load('Scan_Boite.czexp')
+
+tiles = Zen.Acquisition.Execute(scan)
+Zen.Analyzing.Analyze(tiles, local)
+tables = Zen.Analyzing.AnalyzeToTable(tiles, local)
+table = tables[0]
+#Zen.Application.Documents.Add(table)
+
+###Partie Localisation des echantillons
+Echt = [[], [], [], [], []]
+Echt_X = -1
+Echt_Y = -1
+BF.Load('Gastrl_BF_test.czexp')
+
+for i in range(table.RowCount):
+  Zen.Acquisition.StartLive(BF)
+  Echt_X = table.GetValue(i,2)
+  Echt_Y = table.GetValue(i,3)
+  Zen.Devices.Stage.MoveTo(Echt_X, Echt_Y)
+  Zen.Acquisition.StopLive(BF)
+  Zen.Acquisition.StartLive(BF)
+  Zen.Acquisition.AutoExposure()
+  Zen.Application.Pause("Validez Echantillon {}".format(i+1))
+  X = Zen.Devices.Stage.ActualPositionX
+  Y = Zen.Devices.Stage.ActualPositionY
+  Echt[i].Add(X)
+  Echt[i].Add(Y)
+  print("Echantillon {} : {}".format(i+1, Echt[i]))
+
+Zen.Acquisition.StopLive(BF)
+#print(Echt)
+
+if Zen.Devices.ObjectiveChanger.ActualPosition != 1 :
+     Zen.Devices.ObjectiveChanger.TargetPosition = 1
+     Zen.Devices.ObjectiveChanger.Apply()
+if Zen.Devices.Optovar.ActualPosition != 3 :
+     Zen.Devices.Optovar.TargetPosition = 3
+     Zen.Devices.Optovar.Apply()
+
+time_BF = datetime.now()
+time_Green = datetime.now()
+time_Red = datetime.now()
+
+while True:
+  Zen.Application.Documents.RemoveAll(False)
+  current_time = datetime.now()
+  Current_time = current_time.strftime("%Y-%m-%d_%Hh%M")
+
+  if current_time - time_BF &gt;= timedelta(hours=1):
+   BF.Load('Gastrl_BF_test.czexp')
+   Zen.Devices.Stage.MoveTo(Echt[0][0], Echt[0][1])
+   Zen.Acquisition.FindAutofocus(BF, 300)
+   Zen.Acquisition.AutoExposure()
+   focus = Zen.Devices.Focus.ActualPosition
+   BF.AddRectangleTileRegion(0, Echt[0][0], Echt[0][1], 3140, 3336, focus) 
+   ECHT1 = Zen.Acquisition.Execute(BF)
+   time_BF = datetime.now()
+   ECHT1.Save("D:\DATA USERS\eqpimagerie\mehdi\Gastroloides2\Echantillon_1\\E1_{}.czi".format(Current_time))
+   
+  if current_time - time_Green &gt;= timedelta(hours=1):
+   Green.Load('Gastrl_GFP_test.czexp')
+   Zen.Devices.Stage.MoveTo(Echt[1][0], Echt[1][1])
+   Zen.Acquisition.FindAutofocus(Green, 300)
+   Zen.Acquisition.AutoExposure()
+   focus = Zen.Devices.Focus.ActualPosition
+   Green.AddRectangleTileRegion(0, Echt[1][0], Echt[1][1], 3140, 3336, focus)
+   ECHT2 = Zen.Acquisition.Execute(Green)
+   time_Green = datetime.now()
+   ECHT2.Save("D:\DATA USERS\eqpimagerie\mehdi\Gastroloides2\Echantillon_2\\E2_{}.czi".format(Current_time))
+   
+   Green.ClearTileRegionsAndPositions(0)
+   Zen.Devices.Stage.MoveTo(Echt[2][0], Echt[2][1])
+   focus = Zen.Devices.Focus.ActualPosition
+   Green.AddRectangleTileRegion(0, Echt[2][0], Echt[2][1], 3140, 3336, focus) 
+   ECHT3 = Zen.Acquisition.Execute(Green)
+   ECHT3.Save("D:\DATA USERS\eqpimagerie\mehdi\Gastroloides2\Echantillon_3\\E3_{}.czi".format(Current_time))
+  
+  if current_time - time_Red &gt;= timedelta(hours=1):
+   Red.Load('Gastrl_Mcher_test.czexp')
+   Zen.Devices.Stage.MoveTo(Echt[3][0], Echt[3][1])
+   Zen.Acquisition.FindAutofocus(Red, 300)
+   Zen.Acquisition.AutoExposure()
+   focus = Zen.Devices.Focus.ActualPosition
+   Red.AddRectangleTileRegion(0, Echt[3][0], Echt[3][1], 3140, 3336, focus) 
+   ECHT4 = Zen.Acquisition.Execute(Red)
+   time_Red = datetime.now()
+   ECHT4.Save("D:\DATA USERS\eqpimagerie\mehdi\Gastroloides2\Echantillon_4\\E4_{}.czi".format(Current_time))
+
+</Text>
+  <Author></Author>
+  <Description></Description>
+  <Keywords></Keywords>
+  <Row>86</Row>
+  <Column>3</Column>
+</Script>
