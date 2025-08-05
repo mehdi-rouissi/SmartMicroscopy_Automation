@@ -1,9 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Script>
-  <Context>Zen26</Context>
-  <Version>1.0</Version>
-  <Language>Python</Language>
-  <Text>Zen.Application.Documents.RemoveAll(False)
+Zen.Application.Documents.RemoveAll(False)
 Zen.Application.MacroEditor.ClearMessages()
 
 import clr
@@ -129,11 +124,3 @@ while True:
    ECHT4 = Zen.Acquisition.Execute(Red)
    time_Red = datetime.now()
    ECHT4.Save("D:\DATA USERS\eqpimagerie\mehdi\Gastroloides2\Echantillon_4\\E4_{}.czi".format(Current_time))
-
-</Text>
-  <Author></Author>
-  <Description></Description>
-  <Keywords></Keywords>
-  <Row>86</Row>
-  <Column>3</Column>
-</Script>
