@@ -23,16 +23,21 @@ Ce dépôt contient deux projets développés lors d’un stage de fin d’étud
 
 ## Projet 2 – Suivi de fluorescence dans les gastruloïdes
 
-**Objectif :** Localiser plusieurs échantillons dans une boîte de Petri, puis automatiser des acquisitions en fonction de leur emplacement et du canal (BF, vert, rouge) à intervalles réguliers.
+**Objectif :** Automatiser le suivi de plusieurs gastruloïdes vivants dans une boîte de Petri, en déclenchant des acquisitions différenciées selon leur état de fluorescence (GFP, mCherry), avec une logique d'adaptation dynamique au comportement biologique.
 
 ### Fonctionnalités :
-- Détection initiale des échantillons par analyse d’image (image BF)
-- Enregistrement automatique de chaque échantillon toutes les heures
-- Acquisition en plusieurs canaux : brightfield, GFP (vert), mCherry (rouge)
-- Sauvegarde organisée par échantillon et horodatage
+- Scan initial de la boîte pour localiser automatiquement les échantillons par analyse d’image
+- Validation manuelle des échantillons détectés (interface utilisateur)
+- Suivi automatisé en 3 groupes :
+  - **Groupe 1** : Acquisitions GFP toutes les 30 minutes
+  - **Groupe 2** : Acquisitions GFP + mCherry avec intervalle croissant selon apparition de GFP
+  - **Groupe 3** : Acquisitions GFP + mCherry en faible exposition toutes les 30 minutes
+- Changement automatique de groupe selon détection de signal vert ou rouge
+- Sauvegarde structurée des images (par échantillon, par groupe, avec horodatage)
 
 ### Fichiers :
-- `Macro_Gastruloides.xml` : Script Zen pour localisation et suivi automatisé
+- `Macro_Gastruloides.xml` : Script Zen pour la localisation initiale et le suivi intelligent en temps réel
+- Le script gère automatiquement l’ajout/suppression de tuiles, le positionnement, l’analyse d’image, et la gestion du temps entre acquisitions.
 
 ---
 
