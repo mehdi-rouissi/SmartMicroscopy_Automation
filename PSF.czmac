@@ -1,3 +1,11 @@
+# Script : Mesure résolution by PSF
+# Auteur : ROUISSI Mehdi
+# Date   : 06/2025
+# Description : Cette macro sélectionne la bille appropriée dans la zone définie, 
+#               réalise un Z-stack, puis extrait les profils d’intensité selon les axes X, Y et Z. 
+#               Elle calcule ensuite la largeur à mi-hauteur (FWHM) à l’aide d’un ajustement gaussien en 1D ou en 3D
+# ================================================
+
 ###Clear Message and Documents
 Zen.Application.Documents.RemoveAll(False)
 Zen.Application.MacroEditor.ClearMessages()
@@ -545,3 +553,4 @@ error = app.StandardError.ReadToEnd()
 print(output)
 print(error)
 """
+
