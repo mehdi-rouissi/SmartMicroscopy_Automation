@@ -1,9 +1,3 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Script>
-  <Context>Zen26</Context>
-  <Version>1.0</Version>
-  <Language>Python</Language>
-  <Text>Zen.Acquisition.StopContinuous(WF3)
 ###Clear Message and Documents
 Zen.Application.Documents.RemoveAll(False)
 Zen.Application.MacroEditor.ClearMessages()
@@ -551,10 +545,3 @@ error = app.StandardError.ReadToEnd()
 print(output)
 print(error)
 """
-</Text>
-  <Author></Author>
-  <Description></Description>
-  <Keywords></Keywords>
-  <Row>186</Row>
-  <Column>2</Column>
-</Script>
